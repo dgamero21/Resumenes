@@ -71,46 +71,55 @@ const distributeToPeriod = (txDateStr: string, closingDateStr?: string, dueDateS
 };
 
 /**
- * Aplica reglas específicas por banco (Ej: Plan Zeta de Naranja X)
+ * Regla de negocio para Naranja X: Consolidar Plan Zeta
+ * SOLO agrupa si la columna CUOTA/PLAN contiene la palabra "ZETA".
  */
-const applyBankRules = (tx: Transaction, bankName: string, rawItem: any): Transaction => {
-  const isNaranja = bankName.toUpperCase().includes('NARANJA');
-  
-  // Detección agresiva de Zeta: En detalle, en explicación o en el campo crudo 'plan'
-  const rawPlan = String(rawItem.plan || "").toUpperCase();
-  const detail = tx.detail.toUpperCase();
-  const isZeta = rawPlan.includes('ZETA') || detail.includes('ZETA');
+const aggregateNaranjaZeta = (transactions: Transaction[], bankName: string): Transaction[] => {
+  if (!bankName.toUpperCase().includes('NARANJA')) return transactions;
 
-  if (isNaranja && isZeta) {
+  const monthNames = ["ENERO", "FEBRERO", "MARZO", "ABRIL", "MAYO", "JUNIO", "JULIO", "AGOSTO", "SEPTIEMBRE", "OCTUBRE", "NOVIEMBRE", "DICIEMBRE"];
+
+  // 1. Filtrar consumos que TIENEN "ZETA" en la columna CUOTA/PLAN (rawPlan)
+  const zetaItemsToGroup = transactions.filter(t => {
+    const planColumn = (t as any).rawPlan?.toUpperCase() || "";
+    return planColumn.includes('ZETA');
+  });
+
+  if (zetaItemsToGroup.length === 0) return transactions;
+
+  // 2. Mantener como ordinarios los que NO tienen "ZETA" en la columna CUOTA/PLAN
+  // Aunque tengan "ZETA" en el detalle (esto significa que ya son cuotas fijas 02/03, etc.)
+  const ordinaryItems = transactions.filter(t => {
+    const planColumn = (t as any).rawPlan?.toUpperCase() || "";
+    return !planColumn.includes('ZETA');
+  });
+
+  // 3. Agrupar los nuevos consumos Zeta por mes para crear el plan consolidado
+  const groupsByMonth: Record<number, Transaction[]> = {};
+  zetaItemsToGroup.forEach(item => {
+    const month = new Date(item.date).getMonth();
+    if (!groupsByMonth[month]) groupsByMonth[month] = [];
+    groupsByMonth[month].push(item);
+  });
+
+  const aggregatedZetaPlans: Transaction[] = Object.entries(groupsByMonth).map(([monthIdx, items]) => {
+    const totalAmount = items.reduce((sum, item) => sum + item.amount, 0);
+    const monthName = monthNames[parseInt(monthIdx)];
+    
     return {
-      ...tx,
-      detail: tx.detail.toUpperCase().includes('ZETA') ? tx.detail : `${tx.detail} (ZETA)`,
+      ...items[0],
+      id: `zeta-agg-${monthName}-${Date.now()}`,
+      detail: `ZETA ${monthName}`,
+      amount: totalAmount / 3, // Regla: Suma / 3
       type: TransactionType.INSTALLMENT,
       isInstallment: true,
-      installmentCurrent: tx.installmentCurrent || 1,
-      installmentTotal: 3, // Regla Naranja X: Plan Zeta simple = 3 cuotas
+      installmentCurrent: 1,
+      installmentTotal: 3,
+      children: items // Auditoría: ver qué consumos se sumaron
     };
-  }
+  });
 
-  // Si no es Zeta pero es Naranja y tiene formato de cuotas (ej: 02/03)
-  if (isNaranja && rawPlan.includes('/')) {
-      const parts = rawPlan.split('/');
-      const curr = parseInt(parts[0]);
-      const total = parseInt(parts[1]);
-      if (!isNaN(curr) && !isNaN(total)) {
-          tx.installmentCurrent = curr;
-          tx.installmentTotal = total;
-          tx.isInstallment = total > 1;
-          tx.type = total > 1 ? TransactionType.INSTALLMENT : TransactionType.PURCHASE;
-      }
-  }
-
-  // Validar tipo final
-  if (!Object.values(TransactionType).includes(tx.type as any)) {
-      tx.type = tx.isInstallment ? TransactionType.INSTALLMENT : TransactionType.PURCHASE;
-  }
-
-  return tx;
+  return [...ordinaryItems, ...aggregatedZetaPlans];
 };
 
 const analysisSchema = {
@@ -143,7 +152,7 @@ export const parseBankStatement = async (
 ): Promise<Transaction[]> => {
   const ai = getAIClient();
   const prompt = `Analiza este resumen de ${bankProfile.name}. 
-  NARANJA X - COLUMNA CUOTA/PLAN: Si dice "Zeta", devuélvelo en el campo 'plan'.
+  NARANJA X - COLUMNA CUOTA/PLAN: Es CRUCIAL que extraigas EXACTAMENTE lo que dice la columna "CUOTA/PLAN" en el campo 'plan'.
   Extrae CIERRE y VENCIMIENTO. Responde JSON puro rápido.`;
 
   try {
@@ -164,12 +173,12 @@ export const parseBankStatement = async (
     const normClosing = normalizeDate(result.closingDate);
     const normDue = normalizeDate(result.dueDate);
     
-    return result.transactions.map((item: any) => {
+    const mappedTransactions = result.transactions.map((item: any) => {
       const txDate = normalizeDate(item.date);
       const targetPeriod = distributeToPeriod(txDate, normClosing, normDue);
       const isPostClosing = normClosing && new Date(txDate) > new Date(normClosing);
       
-      const baseTx: Transaction = {
+      const tx: Transaction = {
         id: `tx-${Math.random().toString(36).substr(2, 9)}`,
         date: txDate || new Date().toISOString().split('T')[0], 
         detail: item.detail,
@@ -184,9 +193,12 @@ export const parseBankStatement = async (
         statementClosingDate: normClosing,
         statementDueDate: normDue
       };
-
-      return applyBankRules(baseTx, bankProfile.name, item);
+      
+      (tx as any).rawPlan = item.plan;
+      return tx;
     });
+
+    return aggregateNaranjaZeta(mappedTransactions, bankProfile.name);
   } catch (error) {
     throw new Error("Error analizando el PDF.");
   }
@@ -198,7 +210,7 @@ export const parseTransactionsFromImages = async (
 ): Promise<Transaction[]> => {
   const ai = getAIClient();
   const prompt = `Extrae consumos de estas capturas de ${bankProfile.name}.
-  NARANJA X: Mira la columna "CUOTA/PLAN". Si dice "Zeta", indícalo en el campo 'plan'.`;
+  NARANJA X: Mira la columna "CUOTA/PLAN" y pon su contenido en el campo 'plan'.`;
   
   const imageParts = imagesBase64.map(data => ({ inlineData: { mimeType: "image/png", data } }));
 
@@ -218,11 +230,11 @@ export const parseTransactionsFromImages = async (
     const normClosing = normalizeDate(result.closingDate);
     const normDue = normalizeDate(result.dueDate);
 
-    return result.transactions.map((item: any) => {
+    const mappedTransactions = result.transactions.map((item: any) => {
       const txDate = normalizeDate(item.date);
       const targetPeriod = distributeToPeriod(txDate, normClosing, normDue);
       
-      const baseTx: Transaction = {
+      const tx: Transaction = {
         id: `tx-img-${Math.random().toString(36).substr(2, 9)}`,
         date: txDate || new Date().toISOString().split('T')[0], 
         detail: item.detail,
@@ -236,9 +248,12 @@ export const parseTransactionsFromImages = async (
         statementClosingDate: normClosing,
         statementDueDate: normDue
       };
-
-      return applyBankRules(baseTx, bankProfile.name, item);
+      
+      (tx as any).rawPlan = item.plan;
+      return tx;
     });
+
+    return aggregateNaranjaZeta(mappedTransactions, bankProfile.name);
   } catch (error) {
     throw new Error("Error analizando capturas.");
   }

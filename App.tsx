@@ -1,6 +1,6 @@
 
 import React, { useState, useRef, useEffect, useCallback } from 'react';
-import { FileText, Loader2, Landmark, LayoutDashboard, Wallet, Plus, AlertCircle, RefreshCw, Settings as SettingsIcon, CreditCard, ChevronRight, Image as ImageIcon } from 'lucide-react';
+import { FileText, Loader2, Landmark, LayoutGrid, Wallet, Plus, AlertCircle, RefreshCw, Settings as SettingsIcon, CreditCard, ChevronRight, Image as ImageIcon } from 'lucide-react';
 import BankManager from './components/BankManager';
 import Dashboard from './components/Dashboard';
 import FixedExpenses from './components/FixedExpenses';
@@ -135,7 +135,7 @@ export default function App() {
   ];
 
   return (
-    <div className="h-screen bg-slate-50 font-sans text-slate-900 flex flex-col overflow-hidden">
+    <div className="h-full w-full bg-slate-50 font-sans text-slate-900 flex flex-col overflow-hidden">
       <input 
         type="file" 
         ref={bankInputRef} 
@@ -248,22 +248,35 @@ export default function App() {
         {currentView === 'SETTINGS' && <Settings onClose={() => setCurrentView('HOME')} />}
       </main>
 
-      <nav className="h-20 bg-white border-t border-slate-100 flex items-center justify-around px-4 shrink-0 shadow-2xl z-50">
-        <button onClick={() => setCurrentView('BALANCE')} className={`flex flex-col items-center gap-1 transition-all ${currentView === 'BALANCE' ? 'text-brand-600 scale-110' : 'text-slate-400'}`}>
-            <Wallet size={22} />
-            <span className="text-[10px] font-bold">Balance</span>
+      {/* BOTTOM NAV - NATIVE APP STYLE */}
+      <nav className="h-[72px] bg-white border-t border-slate-100 flex items-center justify-around px-4 shrink-0 z-[60] pb-safe">
+        <button 
+            onClick={() => setCurrentView('BALANCE')} 
+            className={`flex flex-col items-center justify-center gap-1 w-full h-full transition-all active:scale-95 ${currentView === 'BALANCE' ? 'text-brand-600' : 'text-slate-400'}`}
+        >
+            <Wallet size={24} strokeWidth={currentView === 'BALANCE' ? 2.5 : 2} />
+            <span className={`text-[11px] ${currentView === 'BALANCE' ? 'font-bold' : 'font-medium'}`}>Balance</span>
         </button>
-        <button onClick={() => setCurrentView('DASHBOARD')} className={`flex flex-col items-center gap-1 transition-all ${currentView === 'DASHBOARD' ? 'text-brand-600 scale-110' : 'text-slate-400'}`}>
-            <LayoutDashboard size={22} />
-            <span className="text-[10px] font-bold">Tarjetas</span>
+        <button 
+            onClick={() => setCurrentView('DASHBOARD')} 
+            className={`flex flex-col items-center justify-center gap-1 w-full h-full transition-all active:scale-95 ${currentView === 'DASHBOARD' ? 'text-brand-600' : 'text-slate-400'}`}
+        >
+            <LayoutGrid size={24} strokeWidth={currentView === 'DASHBOARD' ? 2.5 : 2} />
+            <span className={`text-[11px] ${currentView === 'DASHBOARD' ? 'font-bold' : 'font-medium'}`}>Tarjetas</span>
         </button>
-        <button onClick={() => setCurrentView('HOME')} className={`flex flex-col items-center gap-1 transition-all ${currentView === 'HOME' ? 'text-brand-600 scale-110' : 'text-slate-400'}`}>
-            <Plus size={22} />
-            <span className="text-[10px] font-bold">Importar</span>
+        <button 
+            onClick={() => setCurrentView('HOME')} 
+            className={`flex flex-col items-center justify-center gap-1 w-full h-full transition-all active:scale-95 ${currentView === 'HOME' ? 'text-brand-600' : 'text-slate-400'}`}
+        >
+            <Plus size={24} strokeWidth={currentView === 'HOME' ? 3 : 2} />
+            <span className={`text-[11px] ${currentView === 'HOME' ? 'font-bold' : 'font-medium'}`}>Importar</span>
         </button>
-        <button onClick={() => setCurrentView('BANKS')} className={`flex flex-col items-center gap-1 transition-all ${currentView === 'BANKS' ? 'text-brand-600 scale-110' : 'text-slate-400'}`}>
-            <Landmark size={22} />
-            <span className="text-[10px] font-bold">Bancos</span>
+        <button 
+            onClick={() => setCurrentView('BANKS')} 
+            className={`flex flex-col items-center justify-center gap-1 w-full h-full transition-all active:scale-95 ${currentView === 'BANKS' ? 'text-brand-600' : 'text-slate-400'}`}
+        >
+            <Landmark size={24} strokeWidth={currentView === 'BANKS' ? 2.5 : 2} />
+            <span className={`text-[11px] ${currentView === 'BANKS' ? 'font-bold' : 'font-medium'}`}>Bancos</span>
         </button>
       </nav>
     </div>
